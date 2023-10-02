@@ -1,4 +1,5 @@
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.BitSet;
 
 import org.antlr.v4.runtime.*;
@@ -6,24 +7,30 @@ import org.antlr.v4.runtime.ANTLRInputStream;
 import org.antlr.v4.runtime.atn.ATNConfigSet;
 import org.antlr.v4.runtime.dfa.DFA;
 
-
 public class Driver {
     public static void main(String[] args) throws IOException {
-
-        CommonTokenStream cts = new CommonTokenStream(new LittleLexer(new ANTLRInputStream(System.in)));
-        cts.fill();
+        step2(System.in);
+    }
+    public static String step2(InputStream is) throws IOException {
+        CommonTokenStream cts = new CommonTokenStream(new LittleLexer(new ANTLRInputStream(is)));
         LittleParser parse = new LittleParser(cts);
         parse.removeErrorListeners();
         parse.removeParseListeners();
         parse.addErrorListener(new LittleErrorListener());
 
+        String computedResult = null;
         try {
             parse.program();
-            System.out.println("Accepted");
+            computedResult = "Accepted";
         }
         catch (Exception ex) {
-            System.out.println("Not accepted");
+            computedResult = "Not accepted";
         }
+
+        if(is.equals(System.in)) {
+            System.out.println(computedResult);
+        }
+        return computedResult;
     }
 }
 class LittleErrorListener implements ANTLRErrorListener {
