@@ -1,3 +1,4 @@
+import org.apache.commons.io.FileUtils;
 import org.junit.Test;
 
 import java.io.File;
@@ -15,17 +16,17 @@ public class Tester {
     }
 
     public void testStepX(Integer stepNumber) throws IOException, InvocationTargetException, IllegalAccessException {
-
         final String inputFileName = "src/main/java/step%s/%s/test%s.micro";
         final String INPUTS = "inputs";
         final String OUTPUTS = "outputs";
         Method stepMethod = null;
 
         try {
+            System.out.printf("Starting Tests for Step %s..%n",stepNumber);
             stepMethod = Driver.class.getMethod(String.format("step%s",stepNumber), InputStream.class);
         }
         catch (NoSuchMethodException ex) {
-            System.out.println("Unable to locate method step%s in class "+Driver.class.toString());
+            System.out.printf("Step %s is not defined in class %s%n",stepNumber,Driver.class);
             System.exit(1);
         }
         for(int i=1;i<22;i++) {
@@ -34,10 +35,10 @@ public class Tester {
             if(input.exists() && expectedOutput.exists()) {
                 FileInputStream fis = new FileInputStream(input);
                 String expectedResult = new Scanner(expectedOutput).nextLine();
-                String actualResult = stepMethod.invoke(null,fis).toString();
-                while(actualResult.length()<20) { actualResult+=' '; }
-                System.out.println(String.format("%s \t-> %s  \t: %s", input.getAbsolutePath()
-                        , actualResult, expectedResult.equalsIgnoreCase(actualResult.trim())));
+                StringBuilder actualResult = new StringBuilder(stepMethod.invoke(null, fis).toString());
+                while(actualResult.length()<20) { actualResult.append(' '); }
+                System.out.printf("%s \t-> %s  \t: %s%n", input.getAbsolutePath()
+                        , actualResult.toString(), expectedResult.equalsIgnoreCase(actualResult.toString().trim()));
             }
             else {
                 System.out.println(input.getAbsolutePath() + " has no matching output.. ");
