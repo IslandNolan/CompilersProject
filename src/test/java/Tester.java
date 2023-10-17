@@ -1,7 +1,11 @@
+import com.ibm.icu.text.UTF16;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.NotImplementedException;
+import org.apache.commons.lang3.compare.ComparableUtils;
+import org.apache.commons.lang3.compare.ObjectToStringComparator;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.junit.Test;
+import org.junit.runners.JUnit4;
 
 import java.io.File;
 import java.io.IOException;
@@ -10,6 +14,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
+import java.util.function.Predicate;
 
 import static org.junit.Assert.fail;
 
@@ -20,16 +25,24 @@ public class Tester {
     public static final String RED = "\u001B[31m";
     public static final String RESET = "\033[0m";
     public static final String YELLOW = "\033[0;33m";
-
-
+    private static final String errorMessage = "\n"+RED+"One or more test cases have failed to validate. Please check your work. ";
     @Test
-    public void testStep() throws Exception, InvocationTargetException, IllegalAccessException {
-        testStepX(2);
+    public void testStep1() throws Exception, InvocationTargetException, IllegalAccessException {
+        testStepX(1);
         if(failed) {
-            System.out.println("\n"+RED+"One or more test cases have failed to validate. Please check your work. ");
+            System.out.println(errorMessage);
             fail();
         }
     }
+    @Test
+    public void testStep2() throws Exception, InvocationTargetException, IllegalAccessException {
+        testStepX(2);
+        if(failed) {
+            System.out.println(errorMessage);
+            fail();
+        }
+    }
+
 
     public void testStepX(Integer stepNumber) throws Exception, InvocationTargetException, IllegalAccessException {
         Method stepMethod = null;
@@ -43,14 +56,20 @@ public class Tester {
             System.exit(1);
         }
 
-        Map<String,ImmutablePair<String,String>> testCases = getInputOutputMatches(stepNumber);
+        Map<String,ImmutablePair<String,String>> testCases = null;
+        try {
+            testCases = getInputOutputMatches(stepNumber);
+        }
+        catch (Exception ignored) {}
 
-        if(testCases.isEmpty()) {
+        if(Objects.isNull(testCases) || testCases.isEmpty()) {
             System.out.println("\tNo Test cases found, ensure inputs are present in /src/main/resources/stepX/inputs/... ");
             return;
         }
 
         ArrayList<String> results = new ArrayList<>(testCases.size());
+
+        //Do custom comparator here to organize outputs.
 
         for(String testCase : testCases.keySet()) {
             try {
@@ -61,17 +80,17 @@ public class Tester {
                 }
                 else {
 
-                    //Continue with Test Case, store result in testCaseResult.
-                    outputContents = FileUtils.readFileToString(new File(outputContents), StandardCharsets.UTF_8).trim();
+                    //Continue with Test Case, store result in testCaseResult, also handle carriage returns.
+                    outputContents = FileUtils.readFileToString(new File(outputContents), StandardCharsets.UTF_8).replace("\r\n","\n").trim();
+
                     String testCaseResult = ((String) stepMethod.invoke(new Driver(),
                             FileUtils.openInputStream(FileUtils.getFile(testCases.get(testCase).getLeft())))).trim();
 
                     String[] formattedColumns = formatColumnOutputs(' ',testCase,testCases.get(testCase).getLeft(),testCaseResult,"");
                     boolean passed = outputContents.equalsIgnoreCase(testCaseResult);
                     if(!passed) {
-                        failed = true;
-                        formattedColumns[3] = RED + Boolean.toString(passed) + RESET;
-                    } else formattedColumns[3] = Boolean.toString(passed);
+                        formattedColumns[3] = RED + "x" + RESET;
+                    } else formattedColumns[3] = "✓";
                     results.add(String.format(logMessage, formattedColumns));
 
                 }
@@ -81,34 +100,42 @@ public class Tester {
             }
         }
 
-        System.out.printf(logMessage,formatColumnOutputs(' ',"Test Name","Path","Match","Result"));
-        System.out.printf(logMessage,formatColumnOutputs('-',"","","",""));
+        System.out.printf(logMessage, (Object[]) formatColumnOutputs(' ',"Test Name","Path","Result","Passed"));
+        System.out.printf(logMessage, (Object[]) formatColumnOutputs('-',"","","",""));
         for(String s : results) {
             System.out.print(s);
         }
+        System.out.println();
     }
-
     static Map<String, ImmutablePair<String,String>> getInputOutputMatches(Integer stepNumber) {
         final String discoveredDirectory = String.format(System.getProperty("user.dir")+"/src/main/resources/step%s/%s",stepNumber,"%s");
         final String inputDirectory = String.format(discoveredDirectory,"inputs");
         final String outputDirectory = String.format(discoveredDirectory,"outputs");
 
-        TreeMap<String, ImmutablePair<String,String>> files = new TreeMap<>(
-                (o1, o2) -> {
-                    Integer a = Integer.parseInt(o1.replaceAll("\\D",""));
-                    Integer b = Integer.parseInt(o2.replaceAll("\\D",""));
-                    return a.compareTo(b);
-                }
-        );
+        HashMap<String,ImmutablePair<String,String>> files = new HashMap<>();
+
+        //Sort the key-set based on a custom comparator later. Last enhancement for readability.
 
         for (Iterator<File> it = FileUtils.iterateFiles(new File(inputDirectory), null, false); it.hasNext(); ) {
             File f = it.next();
+            Predicate<File> pred = new Predicate<File>() {
+                @Override
+                public boolean test(File file) {
+                    if(f.getName().matches("\\d")) {
+                        //Trying to match the case #s
+                        return Integer.parseInt(f.getName().replaceAll("\\D", ""))
+                                == Integer.parseInt(file.getName().replaceAll("\\D",""));
+                    }
+                    else {
+                        String realName = f.getName().split("\\.")[0];
+                        return file.getName().split("\\.")[0].equalsIgnoreCase(realName);
+                    }
+                }
+            };
 
-            //Attempt to locate a matching file output.
-            int testCaseNumber = Integer.parseInt(f.getName().replaceAll("\\D", ""));
             try {
                 File output = FileUtils.streamFiles(new File(outputDirectory),false, null)
-                        .filter(file -> testCaseNumber == Integer.parseInt(file.getName().replaceAll("\\D","")))
+                        .filter(pred)
                         .findFirst().orElseThrow(Exception::new);
                 files.put(f.getName(),new ImmutablePair<>(f.getAbsolutePath(), output.getAbsolutePath()));
             }
@@ -120,18 +147,29 @@ public class Tester {
         return files;
     }
 
+    //This will break if delta of the length of the filename is greater than 10, but I'm lazy :shrug:
     static String[] formatColumnOutputs(Character filler, String... args) {
         String[] transformedArguments = new String[args.length];
         for(int i=0;i<args.length;i++) {
             StringBuilder s = new StringBuilder(args[i]);
 
+            //If difference is greater than 10, then set the balance value to the size
+            if((s.length()-columnLengths[i] > 10)) { columnLengths[i] = s.length() +10; }
+            if(columnLengths[i]>30 && i==2) {
+                //Make sure the output doesn't run away (example step 1)
+                columnLengths[i] = 30;
+                if(s.length() > 30) {
+                    s.delete(27,s.length());
+                    s.append("...");
+                }
+            }
+
             while(s.length()<columnLengths[i]) {
                 s.append(filler);
             }
 
-            //If difference is greater than 10, then set the balance value to the size
-            if((s.length()-columnLengths[i] > 10)) { columnLengths[i] = s.length(); }
-            transformedArguments[i]=s.toString();
+            //Do not print the newline characters in the output
+            transformedArguments[i]=s.toString().replaceAll("\n",".");
         }
         return transformedArguments;
     }

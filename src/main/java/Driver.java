@@ -1,6 +1,7 @@
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.BitSet;
+import java.util.HashSet;
 
 import org.antlr.v4.runtime.*;
 import org.antlr.v4.runtime.ANTLRInputStream;
@@ -9,8 +10,42 @@ import org.antlr.v4.runtime.dfa.DFA;
 
 public class Driver implements TestHarness {
     public static void main(String[] args) {
-        new Driver().step2(System.in);
+        new Driver().step1(System.in);
     }
+
+    public String step1(InputStream is) {
+
+        final String DISPLAY = "Token Type: %s\nValue: %s\n";
+        final HashSet<String> keyword_text = new HashSet<String>() {{
+            add("PROGRAM"); add("BEGIN"); add("END"); add("FUNCTION"); add("READ"); add("WRITE");
+            add("IF"); add("ELSE"); add("ENDIF"); add("WHILE"); add("ENDWHILE"); add("CONTINUE"); add("BREAK");
+            add("RETURN"); add("INT"); add("VOID"); add("STRING"); add("FLOAT");
+        }};
+        final HashSet<String> op_text = new HashSet<String>() {{
+            add("ASSIGN"); add("PLUS"); add("MINUS"); add("MULTIPLY"); add("DIVIDE");
+            add("EQUAL"); add("NOTEQUAL"); add("LESS"); add("GREATER"); add("LPAREN");
+            add("RPAREN"); add("SEMICOLON"); add("COMMA"); add("LESSEQUAL"); add("GREATEREQUAL");
+        }};
+
+        StringBuilder computedResult = new StringBuilder();
+        try {
+            LittleLexer lexer = new LittleLexer(new ANTLRInputStream(is));
+            Token t;
+            while ((t = lexer.nextToken()) != null && !lexer._hitEOF) {
+                String name = lexer.getVocabulary().getSymbolicName(t.getType());
+                if (keyword_text.contains(name))
+                    name = "KEYWORD";
+                else if (op_text.contains(name))
+                    name = "OPERATOR";
+               computedResult.append(String.format(DISPLAY, name, t.getText()));
+            }
+        }
+        catch (Exception ex) {
+            return "";
+        }
+        return displayResult(is,computedResult.toString());
+    }
+
 
     @Override
     public String step2(InputStream is) {
@@ -34,6 +69,8 @@ public class Driver implements TestHarness {
         }
         return displayResult(is,result);
     }
+
+
 }
 class LittleErrorListener implements ANTLRErrorListener {
     @Override
