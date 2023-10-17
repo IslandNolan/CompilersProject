@@ -7,30 +7,32 @@ import org.antlr.v4.runtime.ANTLRInputStream;
 import org.antlr.v4.runtime.atn.ATNConfigSet;
 import org.antlr.v4.runtime.dfa.DFA;
 
-public class Driver {
-    public static void main(String[] args) throws IOException {
-        step2(System.in);
+public class Driver implements TestHarness {
+    public static void main(String[] args) {
+        new Driver().step2(System.in);
     }
-    public static String step2(InputStream is) throws IOException {
-        CommonTokenStream cts = new CommonTokenStream(new LittleLexer(new ANTLRInputStream(is)));
-        LittleParser parse = new LittleParser(cts);
-        parse.removeErrorListeners();
-        parse.removeParseListeners();
-        parse.addErrorListener(new LittleErrorListener());
 
-        String computedResult = null;
+    @Override
+    public String step2(InputStream is) {
+        String result = "";
         try {
-            parse.program();
-            computedResult = "Accepted";
-        }
-        catch (Exception ex) {
-            computedResult = "Not accepted";
-        }
+            CommonTokenStream cts = new CommonTokenStream(new LittleLexer(new ANTLRInputStream(is)));
+            LittleParser parse = new LittleParser(cts);
+            parse.removeErrorListeners();
+            parse.removeParseListeners();
+            parse.addErrorListener(new LittleErrorListener());
 
-        if(is.equals(System.in)) {
-            System.out.println(computedResult);
+            parse.program();
+            result = "Accepted";
+
+        } catch (RuntimeException ex) {
+            //Place failure message here.
+            result = "Not accepted";
+
+        } catch (IOException ex) {
+            return "Fatal Error";
         }
-        return computedResult;
+        return displayResult(is,result);
     }
 }
 class LittleErrorListener implements ANTLRErrorListener {
