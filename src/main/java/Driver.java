@@ -143,14 +143,17 @@ class CustomLittleListener extends LittleBaseListener {
         public String getValue() { return value; }
     }
 
+    // Keeps track of order the variables have seen
     private Stack<Map<String, SymbolEntry>> symbolTableStack = new Stack<>();
+    // Stores current symbols as they are seen (LinkedHashMap to store order)
     private Map<String, SymbolEntry> currentSymbolTable = new LinkedHashMap<>();
+    // Saves what the stack has done as it pops scopes, scopSymbolTables is the resulting structure
     private Map<String, Map<String, SymbolEntry>> scopeSymbolTables = new LinkedHashMap<>();
-    private List<String> variableDeclarationOrder = new ArrayList<>();
+    // Number that increments when a new scope has been entered
     private int blockNum = 1;
 
     public CustomLittleListener() {
-        symbolTableStack.push(new HashMap<>());
+        symbolTableStack.push(new LinkedHashMap<>());
         currentSymbolTable = symbolTableStack.peek();
         scopeSymbolTables.put("GLOBAL", currentSymbolTable);
     }
@@ -158,7 +161,7 @@ class CustomLittleListener extends LittleBaseListener {
     @Override
     public void enterFunc_decl(LittleParser.Func_declContext ctx) {
 
-        currentSymbolTable = new HashMap<>();
+        currentSymbolTable = new LinkedHashMap<>();
         symbolTableStack.push(currentSymbolTable);
         scopeSymbolTables.put(ctx.id().getText(), currentSymbolTable);
     }
@@ -173,19 +176,17 @@ class CustomLittleListener extends LittleBaseListener {
 
     @Override
     public void enterIf_stmt(LittleParser.If_stmtContext ctx) {
-        currentSymbolTable = new HashMap<>();
+        currentSymbolTable = new LinkedHashMap<>();
         symbolTableStack.push(currentSymbolTable);
         scopeSymbolTables.put("BLOCK " + blockNum, currentSymbolTable);
         blockNum++;
-        //increment here
 
         LittleParser.Else_partContext elsePart = ctx.else_part();
         if (elsePart != null && elsePart.stmt_list() != null && !elsePart.stmt_list().isEmpty()) {
-            currentSymbolTable = new HashMap<>();
+            currentSymbolTable = new LinkedHashMap<>();
             symbolTableStack.push(currentSymbolTable);
             scopeSymbolTables.put("BLOCK " + blockNum, currentSymbolTable);
             blockNum++;
-            //increment here
         }
     }
 
@@ -197,11 +198,10 @@ class CustomLittleListener extends LittleBaseListener {
 
     @Override
     public void enterWhile_stmt(LittleParser.While_stmtContext ctx) {
-        currentSymbolTable = new HashMap<>();
+        currentSymbolTable = new LinkedHashMap<>();
         symbolTableStack.push(currentSymbolTable);
         scopeSymbolTables.put("BLOCK " + blockNum, currentSymbolTable);
         blockNum++;
-        //increment here
     }
 
     @Override
@@ -224,7 +224,6 @@ class CustomLittleListener extends LittleBaseListener {
         String[] variableNames = ctx.id_list().getText().split(",");
         for (String variableName : variableNames) {
             String name = variableName.trim();
-            variableDeclarationOrder.add(name);
             String value = null;
             currentSymbolTable.put(name, new SymbolEntry(name, type, value));
         }
@@ -243,12 +242,16 @@ class CustomLittleListener extends LittleBaseListener {
         for (String scope : scopeSymbolTables.keySet()) {
             System.out.println(strTable + scope);
             Map<String, SymbolEntry> symbolTable = scopeSymbolTables.get(scope);
+
             for (SymbolEntry entry : symbolTable.values()) {
-                if (entry.value == null)
-                    System.out.println("name " + entry.name + " type " + entry.type);
+
+                // This will be changed to appropriate return output
+                if (entry.getValue() == null)
+                    System.out.println("name " + entry.getName() + " type " + entry.getType());
                 else
-                    System.out.println("name " + entry.name + " type " + entry.type + " value " + entry.value);
+                    System.out.println("name " + entry.getName() + " type " + entry.getType() + " value " + entry.getValue());
             }
+            System.out.println();
         }
     }
 
