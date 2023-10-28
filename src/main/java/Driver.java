@@ -2,15 +2,23 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.BitSet;
 import java.util.HashSet;
+import java.util.Map;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Stack;
 
 import org.antlr.v4.runtime.*;
+import org.antlr.v4.runtime.tree.ParseTreeWalker;
 import org.antlr.v4.runtime.ANTLRInputStream;
 import org.antlr.v4.runtime.atn.ATNConfigSet;
 import org.antlr.v4.runtime.dfa.DFA;
 
 public class Driver implements TestHarness {
+
     public static void main(String[] args) {
-        new Driver().step1(System.in);
+        new Driver().step3(System.in);
     }
 
     public String step1(InputStream is) {
@@ -70,6 +78,29 @@ public class Driver implements TestHarness {
         return displayResult(is,result);
     }
 
+    public String step3(InputStream is) {
+        try {
+            CommonTokenStream cts = new CommonTokenStream(new LittleLexer(new ANTLRInputStream(is)));
+            LittleParser parse = new LittleParser(cts);
+            parse.removeErrorListeners();
+            parse.removeParseListeners();
+            parse.addErrorListener(new LittleErrorListener());
+
+
+            ParseTreeWalker walker = new ParseTreeWalker();
+            CustomLittleListener listener = new CustomLittleListener();
+            walker.walk(listener, parse.program());
+
+            listener.printSymbolTable();
+            return "Accepted";
+        }
+        catch (RuntimeException ex) {
+            return "Not accepted";
+        } catch (IOException ex) {
+            return "Fatal Error";
+        }
+    }
+
 
 }
 class LittleErrorListener implements ANTLRErrorListener {
@@ -93,4 +124,132 @@ class LittleErrorListener implements ANTLRErrorListener {
     public void reportContextSensitivity(Parser recognizer, DFA dfa, int startIndex, int stopIndex, int prediction, ATNConfigSet configs) {
 
     }
+}
+
+class CustomLittleListener extends LittleBaseListener {
+    class SymbolEntry {
+        String name;
+        String type;
+        String value;
+
+        public SymbolEntry(String name, String type, String value) {
+            this.name = name;
+            this.type = type;
+            this.value = value;
+        }
+
+        public String getType() { return type; }
+        public String getName() { return name; }
+        public String getValue() { return value; }
+    }
+
+    private Stack<Map<String, SymbolEntry>> symbolTableStack = new Stack<>();
+    private Map<String, SymbolEntry> currentSymbolTable = new LinkedHashMap<>();
+    private Map<String, Map<String, SymbolEntry>> scopeSymbolTables = new LinkedHashMap<>();
+    private List<String> variableDeclarationOrder = new ArrayList<>();
+    private int blockNum = 1;
+
+    public CustomLittleListener() {
+        symbolTableStack.push(new HashMap<>());
+        currentSymbolTable = symbolTableStack.peek();
+        scopeSymbolTables.put("GLOBAL", currentSymbolTable);
+    }
+
+    @Override
+    public void enterFunc_decl(LittleParser.Func_declContext ctx) {
+
+        currentSymbolTable = new HashMap<>();
+        symbolTableStack.push(currentSymbolTable);
+        scopeSymbolTables.put(ctx.id().getText(), currentSymbolTable);
+    }
+
+
+    @Override
+    public void exitFunc_decl(LittleParser.Func_declContext ctx) {
+        symbolTableStack.pop();
+        currentSymbolTable = symbolTableStack.peek();
+    }
+
+
+    @Override
+    public void enterIf_stmt(LittleParser.If_stmtContext ctx) {
+        currentSymbolTable = new HashMap<>();
+        symbolTableStack.push(currentSymbolTable);
+        scopeSymbolTables.put("BLOCK " + blockNum, currentSymbolTable);
+        blockNum++;
+        //increment here
+
+        LittleParser.Else_partContext elsePart = ctx.else_part();
+        if (elsePart != null && elsePart.stmt_list() != null && !elsePart.stmt_list().isEmpty()) {
+            currentSymbolTable = new HashMap<>();
+            symbolTableStack.push(currentSymbolTable);
+            scopeSymbolTables.put("BLOCK " + blockNum, currentSymbolTable);
+            blockNum++;
+            //increment here
+        }
+    }
+
+    @Override
+    public void exitIf_stmt(LittleParser.If_stmtContext ctx) {
+        symbolTableStack.pop();
+        currentSymbolTable = symbolTableStack.peek();
+    }
+
+    @Override
+    public void enterWhile_stmt(LittleParser.While_stmtContext ctx) {
+        currentSymbolTable = new HashMap<>();
+        symbolTableStack.push(currentSymbolTable);
+        scopeSymbolTables.put("BLOCK " + blockNum, currentSymbolTable);
+        blockNum++;
+        //increment here
+    }
+
+    @Override
+    public void exitWhile_stmt(LittleParser.While_stmtContext ctx) {
+        symbolTableStack.pop();
+        currentSymbolTable = symbolTableStack.peek();
+    }
+
+    @Override
+    public void enterParam_decl(LittleParser.Param_declContext ctx) {
+        String type = ctx.var_type().getText();
+        String name = ctx.id().getText();
+        String value = null;
+        currentSymbolTable.put(name, new SymbolEntry(name, type, value));
+    }
+
+    @Override
+    public void enterVar_decl(LittleParser.Var_declContext ctx) {
+        String type = ctx.var_type().getText();
+        String[] variableNames = ctx.id_list().getText().split(",");
+        for (String variableName : variableNames) {
+            String name = variableName.trim();
+            variableDeclarationOrder.add(name);
+            String value = null;
+            currentSymbolTable.put(name, new SymbolEntry(name, type, value));
+        }
+    }
+
+    @Override
+    public void enterString_decl(LittleParser.String_declContext ctx) {
+        String value = ctx.str().getText();
+        String name = ctx.id().getText();
+        String type = "STRING";
+        currentSymbolTable.put(name, new SymbolEntry(name, type, value));
+    }
+
+    public void printSymbolTable() {
+        String strTable = "Symbol table ";
+        for (String scope : scopeSymbolTables.keySet()) {
+            System.out.println(strTable + scope);
+            Map<String, SymbolEntry> symbolTable = scopeSymbolTables.get(scope);
+            for (SymbolEntry entry : symbolTable.values()) {
+                if (entry.value == null)
+                    System.out.println("name " + entry.name + " type " + entry.type);
+                else
+                    System.out.println("name " + entry.name + " type " + entry.type + " value " + entry.value);
+            }
+        }
+    }
+
 }
