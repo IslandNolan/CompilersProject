@@ -1,11 +1,7 @@
-import com.ibm.icu.text.UTF16;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.NotImplementedException;
-import org.apache.commons.lang3.compare.ComparableUtils;
-import org.apache.commons.lang3.compare.ObjectToStringComparator;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.junit.Test;
-import org.junit.runners.JUnit4;
 
 import java.io.File;
 import java.io.IOException;
@@ -20,14 +16,14 @@ import static org.junit.Assert.fail;
 
 public class Tester {
     private static final String logMessage = "\t%s \t\t%s \t\t%s \t\t%s%n";
-    private static Integer[] columnLengths = {20,20,12,5};
+    private static Integer[] columnLengths = {20,20,20,20};
     private static Boolean failed = false;
     public static final String RED = "\u001B[31m";
     public static final String RESET = "\033[0m";
     public static final String YELLOW = "\033[0;33m";
     private static final String errorMessage = "\n"+RED+"One or more test cases have failed to validate. Please check your work. ";
     @Test
-    public void testStep1() throws Exception, InvocationTargetException, IllegalAccessException {
+    public void testStep1() throws Exception {
         testStepX(1);
         if(failed) {
             System.out.println(errorMessage);
@@ -35,14 +31,21 @@ public class Tester {
         }
     }
     @Test
-    public void testStep2() throws Exception, InvocationTargetException, IllegalAccessException {
+    public void testStep2() throws Exception {
         testStepX(2);
         if(failed) {
             System.out.println(errorMessage);
             fail();
         }
     }
-
+    @Test
+    public void testStep3() throws Exception {
+        testStepX(3);
+        if(failed) {
+            System.out.println(errorMessage);
+            fail();
+        }
+    }
 
     public void testStepX(Integer stepNumber) throws Exception, InvocationTargetException, IllegalAccessException {
         Method stepMethod = null;
@@ -81,22 +84,29 @@ public class Tester {
                 else {
 
                     //Continue with Test Case, store result in testCaseResult, also handle carriage returns.
-                    outputContents = FileUtils.readFileToString(new File(outputContents), StandardCharsets.UTF_8).replace("\r\n","\n").trim();
+                    outputContents = FileUtils.readFileToString(new File(outputContents), StandardCharsets.UTF_8).replace("\r\n", "\n").trim();
 
-                    String testCaseResult = ((String) stepMethod.invoke(new Driver(),
-                            FileUtils.openInputStream(FileUtils.getFile(testCases.get(testCase).getLeft())))).trim();
+                    ResultContext rs = ((ResultContext) stepMethod.invoke(new Driver(),
+                            FileUtils.openInputStream(FileUtils.getFile(testCases.get(testCase).getLeft()))));
 
-                    String[] formattedColumns = formatColumnOutputs(' ',testCase,testCases.get(testCase).getLeft(),testCaseResult,"");
+                    Boolean testSuccess = rs.success;
+                    String testCaseResult = rs.content.trim();
+                    if (Objects.isNull(rs.content) || !testSuccess) {
+                        //fail
+                        testCaseResult = "FAIL";
+                    }
+
+                    Object[] formattedColumns = formatColumnOutputs(' ', testCase, testCases.get(testCase).getLeft(), testCaseResult, "");
                     boolean passed = outputContents.equalsIgnoreCase(testCaseResult);
-                    if(!passed) {
+
+                    if (!passed) {
                         formattedColumns[3] = RED + "x" + RESET;
                     } else formattedColumns[3] = "✓";
-                    results.add(String.format(logMessage, formattedColumns));
-
+                    results.add(String.format(logMessage,formattedColumns));
                 }
             }
             catch (NotImplementedException | IOException ex) {
-                results.add(YELLOW + String.format(logMessage,formatColumnOutputs(' ',testCase,"Not found.. ","......","......"))+RESET);
+                results.add(YELLOW + String.format(logMessage, (Object[]) formatColumnOutputs(' ',testCase,"Not found.. ","......","......"))+RESET);
             }
         }
 
@@ -154,12 +164,12 @@ public class Tester {
             StringBuilder s = new StringBuilder(args[i]);
 
             //If difference is greater than 10, then set the balance value to the size
-            if((s.length()-columnLengths[i] > 10)) { columnLengths[i] = s.length() +10; }
+            if((s.length()-columnLengths[i] > 10)) { columnLengths[i] = s.length() + 15; }
             if(columnLengths[i]>30 && i==2) {
                 //Make sure the output doesn't run away (example step 1)
                 columnLengths[i] = 30;
-                if(s.length() > 30) {
-                    s.delete(27,s.length());
+                if(s.length() > 27) {
+                    s.delete(20,s.length());
                     s.append("...");
                 }
             }

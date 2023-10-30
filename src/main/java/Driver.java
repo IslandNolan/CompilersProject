@@ -1,13 +1,6 @@
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.BitSet;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Stack;
+import java.util.*;
 
 import org.antlr.v4.runtime.*;
 import org.antlr.v4.runtime.tree.ParseTreeWalker;
@@ -20,8 +13,8 @@ public class Driver implements TestHarness {
     public static void main(String[] args) {
         new Driver().step3(System.in);
     }
-
-    public String step1(InputStream is) {
+    @Override
+    public ResultContext step1(InputStream is) {
 
         final String DISPLAY = "Token Type: %s\nValue: %s\n";
         final HashSet<String> keyword_text = new HashSet<String>() {{
@@ -49,14 +42,12 @@ public class Driver implements TestHarness {
             }
         }
         catch (Exception ex) {
-            return "";
+            return new ResultContext(is.getClass()).withSuccess(false);
         }
-        return displayResult(is,computedResult.toString());
+        return new ResultContext(is.getClass()).withContent(computedResult.toString()).displayIfApplicable();
     }
-
-
     @Override
-    public String step2(InputStream is) {
+    public ResultContext step2(InputStream is) {
         String result = "";
         try {
             CommonTokenStream cts = new CommonTokenStream(new LittleLexer(new ANTLRInputStream(is)));
@@ -71,14 +62,14 @@ public class Driver implements TestHarness {
         } catch (RuntimeException ex) {
             //Place failure message here.
             result = "Not accepted";
-
         } catch (IOException ex) {
-            return "Fatal Error";
+            return new ResultContext(is.getClass()).withSuccess(false);
         }
-        return displayResult(is,result);
-    }
 
-    public String step3(InputStream is) {
+        return new ResultContext(is.getClass()).withContent(result).displayIfApplicable();
+    }
+    @Override
+    public ResultContext step3(InputStream is) {
         try {
             CommonTokenStream cts = new CommonTokenStream(new LittleLexer(new ANTLRInputStream(is)));
             LittleParser parse = new LittleParser(cts);
@@ -86,23 +77,21 @@ public class Driver implements TestHarness {
             parse.removeParseListeners();
             parse.addErrorListener(new LittleErrorListener());
 
-
             ParseTreeWalker walker = new ParseTreeWalker();
             CustomLittleListener listener = new CustomLittleListener();
             walker.walk(listener, parse.program());
 
-            listener.printSymbolTable();
-            return "Accepted";
+            if(Objects.nonNull(listener.getDeclError())) {
+                return new ResultContext(is.getClass()).withContent(String.format("DECLARATION ERROR %s",listener.getDeclError())).displayIfApplicable();
+            }
+            else return new ResultContext(is.getClass()).withContent(listener.getSymbolTableString()).displayIfApplicable();
         }
-        catch (RuntimeException ex) {
-            return "Not accepted";
-        } catch (IOException ex) {
-            return "Fatal Error";
+        catch (RuntimeException | IOException ex) {
+            return new ResultContext(is.getClass()).withSuccess(false);
         }
     }
-
-
 }
+
 class LittleErrorListener implements ANTLRErrorListener {
     @Override
     public void syntaxError(Recognizer<?, ?> recognizer, Object offendingSymbol, int line, int charPositionInLine, String msg, RecognitionException e) {
@@ -125,13 +114,11 @@ class LittleErrorListener implements ANTLRErrorListener {
 
     }
 }
-
 class CustomLittleListener extends LittleBaseListener {
     class SymbolEntry {
         String name;
         String type;
         String value;
-
         public SymbolEntry(String name, String type, String value) {
             this.name = name;
             this.type = type;
@@ -141,6 +128,11 @@ class CustomLittleListener extends LittleBaseListener {
         public String getType() { return type; }
         public String getName() { return name; }
         public String getValue() { return value; }
+        @Override
+        public String toString() {
+            if(Objects.isNull(value)) return String.format("name %s type %s%n",getName(),getType());
+            else return String.format("name %s type %s value %s%n",getName(),getType(),getValue());
+        }
     }
 
     // Keeps track of order the variables have seen
@@ -151,13 +143,13 @@ class CustomLittleListener extends LittleBaseListener {
     private Map<String, Map<String, SymbolEntry>> scopeSymbolTables = new LinkedHashMap<>();
     // Number that increments when a new scope has been entered
     private int blockNum = 1;
+    private List<String> declError = new ArrayList<>();
 
     public CustomLittleListener() {
         symbolTableStack.push(new LinkedHashMap<>());
         currentSymbolTable = symbolTableStack.peek();
         scopeSymbolTables.put("GLOBAL", currentSymbolTable);
     }
-
     @Override
     public void enterFunc_decl(LittleParser.Func_declContext ctx) {
 
@@ -165,7 +157,6 @@ class CustomLittleListener extends LittleBaseListener {
         symbolTableStack.push(currentSymbolTable);
         scopeSymbolTables.put(ctx.id().getText(), currentSymbolTable);
     }
-
 
     @Override
     public void exitFunc_decl(LittleParser.Func_declContext ctx) {
@@ -215,6 +206,10 @@ class CustomLittleListener extends LittleBaseListener {
         String type = ctx.var_type().getText();
         String name = ctx.id().getText();
         String value = null;
+        if(searchForKeyName(name)) {
+            declError.add(name);
+            return;
+        }
         currentSymbolTable.put(name, new SymbolEntry(name, type, value));
     }
 
@@ -225,6 +220,10 @@ class CustomLittleListener extends LittleBaseListener {
         for (String variableName : variableNames) {
             String name = variableName.trim();
             String value = null;
+            if(searchForKeyName(name)) {
+                declError.add(name);
+                return;
+            }
             currentSymbolTable.put(name, new SymbolEntry(name, type, value));
         }
     }
@@ -234,25 +233,29 @@ class CustomLittleListener extends LittleBaseListener {
         String value = ctx.str().getText();
         String name = ctx.id().getText();
         String type = "STRING";
+        if(searchForKeyName(name)) {
+            declError.add(name);
+            return;
+        }
         currentSymbolTable.put(name, new SymbolEntry(name, type, value));
     }
-
-    public void printSymbolTable() {
-        String strTable = "Symbol table ";
-        for (String scope : scopeSymbolTables.keySet()) {
-            System.out.println(strTable + scope);
-            Map<String, SymbolEntry> symbolTable = scopeSymbolTables.get(scope);
-
-            for (SymbolEntry entry : symbolTable.values()) {
-
-                // This will be changed to appropriate return output
-                if (entry.getValue() == null)
-                    System.out.println("name " + entry.getName() + " type " + entry.getType());
-                else
-                    System.out.println("name " + entry.getName() + " type " + entry.getType() + " value " + entry.getValue());
-            }
-            System.out.println();
+    public String getSymbolTableString() {
+        final String SYMBOL_TABLE = "Symbol table ";
+        StringBuilder result = new StringBuilder();
+        for (String scopeName : scopeSymbolTables.keySet()) {
+            result.append(SYMBOL_TABLE).append(scopeName).append("\n");
+            Map<String, SymbolEntry> symbolTable = scopeSymbolTables.get(scopeName);
+            symbolTable.values().forEach(symbol -> result.append(symbol.toString()));
+            result.append("\n");
         }
+        return result.toString();
     }
-
+    public Boolean searchForKeyName(String newKey) {
+        return currentSymbolTable.containsKey(newKey);
+    }
+    public String getDeclError() {
+        if(declError.isEmpty()) {
+            return null;
+        } else return declError.get(0);
+    }
 }
