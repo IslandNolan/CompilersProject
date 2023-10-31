@@ -1,19 +1,16 @@
+import java.io.BufferedInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.*;
 
 import org.antlr.v4.runtime.*;
 import org.antlr.v4.runtime.tree.ParseTreeWalker;
-import org.antlr.v4.runtime.ANTLRInputStream;
 import org.antlr.v4.runtime.atn.ATNConfigSet;
 import org.antlr.v4.runtime.dfa.DFA;
-
-public class Driver implements TestHarness {
-
+public class Driver {
     public static void main(String[] args) {
         new Driver().step3(System.in);
     }
-    @Override
     public ResultContext step1(InputStream is) {
 
         final String DISPLAY = "Token Type: %s\nValue: %s\n";
@@ -30,7 +27,7 @@ public class Driver implements TestHarness {
 
         StringBuilder computedResult = new StringBuilder();
         try {
-            LittleLexer lexer = new LittleLexer(new ANTLRInputStream(is));
+            LittleLexer lexer = new LittleLexer(CharStreams.fromStream(is));
             Token t;
             while ((t = lexer.nextToken()) != null && !lexer._hitEOF) {
                 String name = lexer.getVocabulary().getSymbolicName(t.getType());
@@ -46,11 +43,10 @@ public class Driver implements TestHarness {
         }
         return new ResultContext(is.getClass()).withContent(computedResult.toString()).displayIfApplicable();
     }
-    @Override
     public ResultContext step2(InputStream is) {
         String result = "";
         try {
-            CommonTokenStream cts = new CommonTokenStream(new LittleLexer(new ANTLRInputStream(is)));
+            CommonTokenStream cts = new CommonTokenStream(new LittleLexer(CharStreams.fromStream(is)));
             LittleParser parse = new LittleParser(cts);
             parse.removeErrorListeners();
             parse.removeParseListeners();
@@ -68,11 +64,9 @@ public class Driver implements TestHarness {
 
         return new ResultContext(is.getClass()).withContent(result).displayIfApplicable();
     }
-    @Override
     public ResultContext step3(InputStream is) {
         try {
-            CommonTokenStream cts = new CommonTokenStream(new LittleLexer(new ANTLRInputStream(is)));
-            LittleParser parse = new LittleParser(cts);
+            LittleParser parse = new LittleParser(new CommonTokenStream(new LittleLexer(CharStreams.fromStream(is))));
             parse.removeErrorListeners();
             parse.removeParseListeners();
             parse.addErrorListener(new LittleErrorListener());
@@ -91,7 +85,6 @@ public class Driver implements TestHarness {
         }
     }
 }
-
 class LittleErrorListener implements ANTLRErrorListener {
     @Override
     public void syntaxError(Recognizer<?, ?> recognizer, Object offendingSymbol, int line, int charPositionInLine, String msg, RecognitionException e) {
@@ -114,27 +107,26 @@ class LittleErrorListener implements ANTLRErrorListener {
 
     }
 }
-class CustomLittleListener extends LittleBaseListener {
-    class SymbolEntry {
-        String name;
-        String type;
-        String value;
-        public SymbolEntry(String name, String type, String value) {
-            this.name = name;
-            this.type = type;
-            this.value = value;
-        }
-
-        public String getType() { return type; }
-        public String getName() { return name; }
-        public String getValue() { return value; }
-        @Override
-        public String toString() {
-            if(Objects.isNull(value)) return String.format("name %s type %s%n",getName(),getType());
-            else return String.format("name %s type %s value %s%n",getName(),getType(),getValue());
-        }
+class SymbolEntry {
+    String name;
+    String type;
+    String value;
+    public SymbolEntry(String name, String type, String value) {
+        this.name = name;
+        this.type = type;
+        this.value = value;
     }
 
+    public String getType() { return type; }
+    public String getName() { return name; }
+    public String getValue() { return value; }
+    @Override
+    public String toString() {
+        if(Objects.isNull(value)) return String.format("name %s type %s%n",getName(),getType());
+        else return String.format("name %s type %s value %s%n",getName(),getType(),getValue());
+    }
+}
+class CustomLittleListener extends LittleBaseListener {
     // Keeps track of order the variables have seen
     private Stack<Map<String, SymbolEntry>> symbolTableStack = new Stack<>();
     // Stores current symbols as they are seen (LinkedHashMap to store order)
@@ -257,5 +249,28 @@ class CustomLittleListener extends LittleBaseListener {
         if(declError.isEmpty()) {
             return null;
         } else return declError.get(0);
+    }
+}
+class ResultContext {
+    Boolean success = true;
+    String content = null;
+    Class<? extends InputStream> cl;
+
+    public ResultContext(Class<? extends InputStream> isC) {
+        cl = isC;
+    }
+    public ResultContext withSuccess(Boolean outcome) {
+        this.success = false;
+        return this;
+    }
+    public ResultContext withContent(String sb) {
+        content = sb;
+        return this;
+    }
+    public ResultContext displayIfApplicable() {
+        if(cl.equals(BufferedInputStream.class)) {
+            System.out.print(content);
+        }
+        return this;
     }
 }
