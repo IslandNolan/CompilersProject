@@ -27,7 +27,7 @@ public class Driver {
 
         StringBuilder computedResult = new StringBuilder();
         try {
-            LittleLexer lexer = new LittleLexer(CharStreams.fromStream(is));
+            LittleLexer lexer = new LittleLexer(new ANTLRInputStream(is));
             Token t;
             while ((t = lexer.nextToken()) != null && !lexer._hitEOF) {
                 String name = lexer.getVocabulary().getSymbolicName(t.getType());
@@ -46,7 +46,7 @@ public class Driver {
     public ResultContext step2(InputStream is) {
         String result = "";
         try {
-            CommonTokenStream cts = new CommonTokenStream(new LittleLexer(CharStreams.fromStream(is)));
+            CommonTokenStream cts = new CommonTokenStream(new LittleLexer(new ANTLRInputStream(is)));
             LittleParser parse = new LittleParser(cts);
             parse.removeErrorListeners();
             parse.removeParseListeners();
@@ -66,7 +66,7 @@ public class Driver {
     }
     public ResultContext step3(InputStream is) {
         try {
-            LittleParser parse = new LittleParser(new CommonTokenStream(new LittleLexer(CharStreams.fromStream(is))));
+            LittleParser parse = new LittleParser(new CommonTokenStream(new LittleLexer(new ANTLRInputStream(is))));
             parse.removeErrorListeners();
             parse.removeParseListeners();
             parse.addErrorListener(new LittleErrorListener());
@@ -260,7 +260,7 @@ class ResultContext {
         cl = isC;
     }
     public ResultContext withSuccess(Boolean outcome) {
-        this.success = false;
+        this.success = outcome;
         return this;
     }
     public ResultContext withContent(String sb) {
