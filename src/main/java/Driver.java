@@ -64,6 +64,7 @@ public class Driver {
 
         return new ResultContext(is.getClass()).withContent(result).displayIfApplicable();
     }
+
     public ResultContext step3(InputStream is) {
         try {
             LittleParser parse = new LittleParser(new CommonTokenStream(new LittleLexer(new ANTLRInputStream(is))));
@@ -75,16 +76,182 @@ public class Driver {
             CustomLittleListener listener = new CustomLittleListener();
             walker.walk(listener, parse.program());
 
-            if(Objects.nonNull(listener.getDeclError())) {
-                return new ResultContext(is.getClass()).withContent(String.format("DECLARATION ERROR %s",listener.getDeclError())).displayIfApplicable();
-            }
-            else return new ResultContext(is.getClass()).withContent(listener.getSymbolTableString()).displayIfApplicable();
-        }
-        catch (RuntimeException | IOException ex) {
+
+            if (Objects.nonNull(listener.getDeclError())) {
+                return new ResultContext(is.getClass()).withContent(String.format("DECLARATION ERROR %s", listener.getDeclError())).displayIfApplicable();
+            } else
+                return new ResultContext(is.getClass()).withContent(listener.getSymbolTableString()).displayIfApplicable();
+        } catch (RuntimeException | IOException ex) {
             return new ResultContext(is.getClass()).withSuccess(false);
         }
     }
+
+    public ResultContext step4(InputStream is) {
+
+        try {
+            LittleParser parse = new LittleParser(new CommonTokenStream(new LittleLexer(new ANTLRInputStream(is))));
+            parse.removeErrorListeners();
+            parse.removeParseListeners();
+            parse.addErrorListener(new LittleErrorListener());
+
+            ParseTreeWalker walker = new ParseTreeWalker();
+            IRGenerator gen = new IRGenerator();
+            walker.walk(gen, parse.program());
+            System.out.println("----");
+
+        } catch (IOException e) {
+
+            return new ResultContext(is.getClass());
+        }
+        return new ResultContext(is.getClass());
+    }
 }
+class IRGenerator extends LittleBaseListener {
+
+    //Will eventually merge this with the other listener
+    HashMap<String,String> types = new HashMap<>();
+    LinkedList<CodeObject> irList = new LinkedList<>();
+    Integer latestTemp = 1;
+    static class CodeObject {
+        String dest = new String();
+        String s1 = new String();
+        String s2 = new String();
+        String opcode = new String();
+        public CodeObject(String opcode, String s1, String s2, String dest) {
+
+            String ir = "";
+            if(opcode!=null) {
+                this.opcode = opcode;
+                ir+=";"+opcode+" ";
+            }
+            if(s2!=null) {
+                this.s1 = s1;
+                ir+=(s1+" ");
+            }
+            if(s2!=null) {
+                this.s2 = s2;
+                ir+=(s2+" ");
+            }
+            if(dest!=null) {
+                this.dest = dest;
+                ir+=(dest+" ");
+            }
+            ir = ir.trim().replaceAll("  "," ");
+            System.out.println(ir);
+
+        }
+    }
+    @Override
+    public void exitAssign_stmt(LittleParser.Assign_stmtContext ctx) {
+        if(ctx.assign_expr().expr().getText().matches("[0-9]*") || ctx.assign_expr().expr().getText().matches("[0-9]*.[0-9]+")) {
+            Character postfix = (types.get(ctx.assign_expr().id().getText()).equals("INT")) ? 'I' : 'F';
+            irList.add(new CodeObject("STORE" + postfix, ctx.assign_expr().expr().getText(), "", "$T" + latestTemp++));
+            irList.add(new CodeObject("STORE" + postfix, irList.getLast().dest, "", ctx.assign_expr().id().getText()));
+        }
+        else {
+            Character postfix = (types.get(ctx.assign_expr().id().getText()).equals("INT")) ? 'I' : 'F';
+            irList.add(new CodeObject("STORE" + postfix, irList.getLast().dest, "", ctx.assign_expr().id().getText()));
+        }
+    }
+    @Override
+    public void enterString_decl(LittleParser.String_declContext ctx) {
+        //System.out.print("\nstr "+ctx.id().getText()+" "+ctx.ASSIGN()+" "+ctx.str().getText());
+        types.put(ctx.id().getText(),"STRING");
+    }
+    @Override
+    public void enterVar_decl(LittleParser.Var_declContext ctx) {
+        Arrays.stream(ctx.id_list().getText().split(",")).forEach(id -> {
+                types.put(id, ctx.var_type().getText());
+            }
+        );
+    }
+    @Override
+    public void enterRead_stmt(LittleParser.Read_stmtContext ctx) {
+        Arrays.stream(ctx.id_list().getText().split(",")).forEach(readi -> {
+            if(types.get(readi).equalsIgnoreCase("string")) {
+                irList.add(new CodeObject("READS", null, null, readi));
+            } else {
+                irList.add(new CodeObject("READI", null, null, readi));
+            }
+        });
+    }
+    @Override
+    public void enterWrite_stmt(LittleParser.Write_stmtContext ctx) {
+        Arrays.stream(ctx.id_list().getText().split(",")).forEach(write -> {
+            if(types.get(write).equalsIgnoreCase("string")) {
+                irList.add(new CodeObject("WRITES", null, null, write));
+            } else {
+                irList.add(new CodeObject("WRITEI", null, null, write));
+            }
+        });
+    }
+    @Override
+    public void exitPgm_body(LittleParser.Pgm_bodyContext ctx) {
+        irList.add(new CodeObject("RET", null, null, null));
+    }
+    @Override
+    public void enterAddop(LittleParser.AddopContext ctx) {
+
+        String postfix;
+        String parts = ctx.getParent().getParent().getText();
+        if(ctx.getText().equals("+")) {
+            String[] partsList = parts.split("\\+");
+            String s1 = partsList[0];
+            String s2 = partsList[1];
+
+            if(types.get(s1).equals("FLOAT") || types.get(s2).equals("FLOAT")) {
+                postfix = "F";
+            }
+            else postfix = "I";
+            irList.add(new CodeObject("ADD" + postfix, s1, s2, "$T" + latestTemp++));
+        }
+        else {
+            String[] partsList = parts.split("-");
+            String s1 = partsList[0];
+            String s2 = partsList[1];
+
+            if(types.get(s1).equals("FLOAT") || types.get(s2).equals("FLOAT")) {
+                postfix = "F";
+            }
+            else postfix = "I";
+            irList.add(new CodeObject("SUB" + postfix, s1, s2, "$T" + latestTemp++));
+        }
+    }
+    @Override
+    public void enterMulop(LittleParser.MulopContext ctx) {
+
+        String parts = ctx.getParent().getParent().getParent().getText();
+        String postfix;
+
+        if(ctx.getText().equals("*")) {
+            String[] partsList = parts.split("\\*");
+            String s1 = partsList[0];
+            String s2 = partsList[1];
+
+            if(types.get(s1).equals("FLOAT") || types.get(s2).equals("FLOAT")) {
+                postfix = "F";
+            }
+            else postfix = "I";
+
+            irList.add(new CodeObject("MULT" + postfix, s1, s2, "$T" + latestTemp++));
+        }
+        else {
+            //Divide
+            String[] partsList = parts.split("/");
+            String s1 = partsList[0];
+            String s2 = partsList[1];
+
+            if(types.get(s1).equals("FLOAT") || types.get(s2).equals("FLOAT")) {
+                postfix = "F";
+            }
+            else postfix = "I";
+
+            irList.add(new CodeObject("DIV" + postfix, s1, s2, "$T" + latestTemp++));
+        }
+
+    }
+}
+
 class LittleErrorListener implements ANTLRErrorListener {
     @Override
     public void syntaxError(Recognizer<?, ?> recognizer, Object offendingSymbol, int line, int charPositionInLine, String msg, RecognitionException e) {
@@ -144,7 +311,6 @@ class CustomLittleListener extends LittleBaseListener {
     }
     @Override
     public void enterFunc_decl(LittleParser.Func_declContext ctx) {
-
         currentSymbolTable = new LinkedHashMap<>();
         symbolTableStack.push(currentSymbolTable);
         scopeSymbolTables.put(ctx.id().getText(), currentSymbolTable);

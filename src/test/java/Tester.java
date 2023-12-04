@@ -46,6 +46,14 @@ public class Tester {
             fail();
         }
     }
+    @Test
+    public void testStep4() throws Exception {
+        testStepX(4);
+        if(failed) {
+            System.out.println(errorMessage);
+            fail();
+        }
+    }
 
     public void testStepX(Integer stepNumber) throws Exception, InvocationTargetException, IllegalAccessException {
         Method stepMethod = null;
@@ -90,11 +98,11 @@ public class Tester {
                             FileUtils.openInputStream(FileUtils.getFile(testCases.get(testCase).getLeft()))));
 
                     Boolean testSuccess = rs.success;
-                    String testCaseResult = rs.content.trim();
+                    String testCaseResult;
                     if (Objects.isNull(rs.content) || !testSuccess) {
                         //fail
                         testCaseResult = "FAIL";
-                    }
+                    }else testCaseResult = rs.content.trim();
 
                     Object[] formattedColumns = formatColumnOutputs(' ', testCase, testCases.get(testCase).getLeft(), testCaseResult, "");
                     boolean passed = outputContents.equalsIgnoreCase(testCaseResult);
