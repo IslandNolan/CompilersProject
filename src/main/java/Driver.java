@@ -2,6 +2,7 @@ import java.io.BufferedInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.*;
+import java.util.stream.Collectors;
 
 import org.antlr.v4.runtime.*;
 import org.antlr.v4.runtime.tree.ParseTreeWalker;
@@ -97,7 +98,10 @@ public class Driver {
             ParseTreeWalker walker = new ParseTreeWalker();
             IRGenerator gen = new IRGenerator();
             walker.walk(gen, parse.program());
-            System.out.println("----");
+
+            for(String tinyLine : gen.irToTiny()) {
+                System.out.println(tinyLine);
+            }
 
         } catch (IOException e) {
 
@@ -107,11 +111,11 @@ public class Driver {
     }
 }
 class IRGenerator extends LittleBaseListener {
-
-    //Will eventually merge this with the other listener
     HashMap<String,String> types = new HashMap<>();
     LinkedList<CodeObject> irList = new LinkedList<>();
     Integer latestTemp = 1;
+    HashMap<String,String> tToR = new HashMap<>();
+    LinkedHashMap<String,String> assigned_content = new LinkedHashMap<>();
     static class CodeObject {
         String dest = new String();
         String s1 = new String();
@@ -138,25 +142,150 @@ class IRGenerator extends LittleBaseListener {
             }
             ir = ir.trim().replaceAll("  "," ");
             System.out.println(ir);
-
         }
     }
+    public String nextTemp(String s) {
+        if(s.contains("$T")) {
+            String x = tToR.getOrDefault(s, "r"+latestTemp);
+            if(!tToR.containsKey(s)) {
+                tToR.put(s,x);
+                latestTemp++;
+            }
+            return x;
+        } else return s;
+    }
+    public List<String> irToTiny() {
+
+        LinkedList<String> lines = new LinkedList<>();
+        latestTemp=0;
+
+        for(String key : types.keySet().stream().sorted().collect(Collectors.toList())) {
+            switch(types.get(key)) {
+                case "FLOAT":
+                case "INT": {
+                    if(assigned_content.containsKey(key)) {
+                        lines.add(new String("var "+key+" "+assigned_content.get(key)));
+                    } else { lines.add(new String("var "+key)); }
+                    break;
+                }
+                case "STRING": {
+                    if(assigned_content.containsKey(key)) {
+                        lines.add(new String("str "+key+" "+assigned_content.get(key)));
+                    } else { lines.add(new String("str "+key)); }
+                    break;
+                }
+            }
+        }
+        for(CodeObject x : irList) {
+            switch(x.opcode) {
+
+                case "STOREF":
+                    lines.add("move "+nextTemp(x.s1)+" "+nextTemp(x.dest));
+                    break;
+                case "STOREI":
+                    lines.add("move "+nextTemp(x.s1)+" "+nextTemp(x.dest));
+                    break;
+                case "MULTI":
+                    lines.add("move "+nextTemp(x.s1)+" "+nextTemp(x.dest));
+                    lines.add("muli "+nextTemp(x.s2)+" "+nextTemp(x.dest));
+                    break;
+                case "MULTF":
+                    lines.add("move "+nextTemp(x.s1)+" "+ nextTemp(x.dest));
+                    lines.add("mulf "+nextTemp(x.s2)+" "+ nextTemp(x.dest));
+                    break;
+                case "DIVI":
+                    lines.add("move "+nextTemp(x.s1)+" "+nextTemp(x.dest));
+                    lines.add("divi "+nextTemp(x.s2)+" "+nextTemp(x.dest));
+                    break;
+                case "DIVF":
+                    //move z r5
+                    //divr r4 r5
+                    lines.add("move "+nextTemp(x.s1)+" "+nextTemp(x.dest));
+                    lines.add("divr "+nextTemp(x.s2)+" "+nextTemp(x.dest));
+                    break;
+                case "READF":
+                    lines.add("sys readf "+nextTemp(x.dest));
+                    break;
+                case "READI":
+                    lines.add("sys readi "+nextTemp(x.dest));
+                    break;
+                case "ADDI":
+                    lines.add("move "+nextTemp(x.s1)+" "+nextTemp(x.dest));
+                    lines.add("addi "+nextTemp(x.s2)+" "+nextTemp(x.dest));
+                    break;
+                case "ADDF":
+                    lines.add("move "+nextTemp(x.s1)+" "+nextTemp(x.dest));
+                    lines.add("addf "+nextTemp(x.s2)+" "+nextTemp(x.dest));
+                    break;
+                case "SUBI":
+                    lines.add("move "+nextTemp(x.s1)+" "+nextTemp(x.dest));
+                    lines.add("subi "+nextTemp(x.s2)+" "+nextTemp(x.dest));
+                    break;
+                case "SUBF":
+                    lines.add("move "+nextTemp(x.s1)+" "+nextTemp(x.dest));
+                    lines.add("subf "+nextTemp(x.s2)+" "+nextTemp(x.dest));
+                    break;
+                case "WRITEF":
+                case "WRITES":
+                case "WRITEI":
+                    lines.add("sys "+x.opcode.toLowerCase()+" "+nextTemp(x.dest));
+                    break;
+                case "":
+
+                    break;
+
+            }
+        }
+        lines.add("sys halt");
+        return lines;
+    }
+
     @Override
     public void exitAssign_stmt(LittleParser.Assign_stmtContext ctx) {
-        if(ctx.assign_expr().expr().getText().matches("[0-9]*") || ctx.assign_expr().expr().getText().matches("[0-9]*.[0-9]+")) {
-            Character postfix = (types.get(ctx.assign_expr().id().getText()).equals("INT")) ? 'I' : 'F';
-            irList.add(new CodeObject("STORE" + postfix, ctx.assign_expr().expr().getText(), "", "$T" + latestTemp++));
-            irList.add(new CodeObject("STORE" + postfix, irList.getLast().dest, "", ctx.assign_expr().id().getText()));
+        String compound = ctx.assign_expr().expr().getText();
+        if(compound.contains("/")){
+            String assignExpr = "/";
+            String[] arr = ctx.assign_expr().expr().getText().split("/");
+
+            String postfix;
+            if(types.getOrDefault(arr[0],null).equals("FLOAT") || types.getOrDefault(arr[1],null).equals("FLOAT")) {
+                postfix = "F";
+            }
+            else postfix = "I";
+
+            irList.add(new CodeObject("STORE"+ postfix, arr[1], "", "$T" + latestTemp++));
+            irList.add(new CodeObject("STORE" + postfix, arr[0], irList.getLast().dest, "$T"+latestTemp++));
+        }
+        else if(compound.contains("+")){
+            String assignExpr = "+";
+            String[] arr = ctx.assign_expr().expr().getText().split("\\+");
+
+        }
+        else if(compound.contains("-")){
+            String assignExpr = "-";
+            String[] arr = ctx.assign_expr().expr().getText().split("-");
+
+        }
+        else if(compound.contains("*")){
+            String assignExpr = "*";
+            String[] arr = ctx.assign_expr().expr().getText().split("\\*");
         }
         else {
-            Character postfix = (types.get(ctx.assign_expr().id().getText()).equals("INT")) ? 'I' : 'F';
-            irList.add(new CodeObject("STORE" + postfix, irList.getLast().dest, "", ctx.assign_expr().id().getText()));
+            if(ctx.assign_expr().expr().getText().matches("[0-9]*") || ctx.assign_expr().expr().getText().matches("[0-9]*.[0-9]+")) {
+                Character postfix = (types.get(ctx.assign_expr().id().getText()).equals("INT")) ? 'I' : 'F';
+                irList.add(new CodeObject("STORE" + postfix, ctx.assign_expr().expr().getText(), "", "$T" + latestTemp++));
+                irList.add(new CodeObject("STORE" + postfix, irList.getLast().dest, "", ctx.assign_expr().id().getText()));
+            }
+            else {
+                Character postfix = (types.get(ctx.assign_expr().id().getText()).equals("INT")) ? 'I' : 'F';
+                irList.add(new CodeObject("STORE" + postfix, irList.getLast().dest, "", ctx.assign_expr().id().getText()));
+            }
         }
     }
     @Override
     public void enterString_decl(LittleParser.String_declContext ctx) {
-        //System.out.print("\nstr "+ctx.id().getText()+" "+ctx.ASSIGN()+" "+ctx.str().getText());
         types.put(ctx.id().getText(),"STRING");
+        assigned_content.put(ctx.id().getText(),ctx.str().getText());
     }
     @Override
     public void enterVar_decl(LittleParser.Var_declContext ctx) {
@@ -180,7 +309,11 @@ class IRGenerator extends LittleBaseListener {
         Arrays.stream(ctx.id_list().getText().split(",")).forEach(write -> {
             if(types.get(write).equalsIgnoreCase("string")) {
                 irList.add(new CodeObject("WRITES", null, null, write));
-            } else {
+            }
+            else if(types.get(write).equals("FLOAT")) {
+                irList.add(new CodeObject("WRITEF",null,null,write));
+            }
+            else {
                 irList.add(new CodeObject("WRITEI", null, null, write));
             }
         });
@@ -233,6 +366,10 @@ class IRGenerator extends LittleBaseListener {
             }
             else postfix = "I";
 
+            //check ctx for :=
+            if(ctx.getParent().getParent().getParent().getParent().getText().contains(":=")) {
+                return;
+            }
             irList.add(new CodeObject("MULT" + postfix, s1, s2, "$T" + latestTemp++));
         }
         else {
@@ -246,6 +383,13 @@ class IRGenerator extends LittleBaseListener {
             }
             else postfix = "I";
 
+
+            //check ctx for :=
+            if(ctx.getParent().getParent().getParent().getParent().getText().contains(":=")) {
+                return;
+            }
+
+            //Problem here.
             irList.add(new CodeObject("DIV" + postfix, s1, s2, "$T" + latestTemp++));
         }
 
