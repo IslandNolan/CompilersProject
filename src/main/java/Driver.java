@@ -10,7 +10,7 @@ import org.antlr.v4.runtime.atn.ATNConfigSet;
 import org.antlr.v4.runtime.dfa.DFA;
 public class Driver {
     public static void main(String[] args) {
-        new Driver().step3(System.in);
+        new Driver().step4(System.in);
     }
     public ResultContext step1(InputStream is) {
 
@@ -144,7 +144,22 @@ class IRGenerator extends LittleBaseListener {
             System.out.println(ir);
         }
     }
-    public String nextTemp(String s) {
+
+    public String createTemp() {
+        return "$T"+latestTemp++;
+    }
+    public String[] processCompound(String s,String delimeter) {
+        return s.replace("(","").replace(")","").split(delimeter);
+    }
+    public String findPostfix(String... args) {
+        for(String s : args) {
+            //If contains a decimal
+            if(s.contains(".")) { return "F"; }
+            if(types.containsKey(s) && types.get(s).equals("FLOAT")) { return "F"; }
+        }
+        return "I";
+    }
+    public String getTemp(String s) {
         if(s.contains("$T")) {
             String x = tToR.getOrDefault(s, "r"+latestTemp);
             if(!tToR.containsKey(s)) {
@@ -158,7 +173,6 @@ class IRGenerator extends LittleBaseListener {
 
         LinkedList<String> lines = new LinkedList<>();
         latestTemp=0;
-
         for(String key : types.keySet().stream().sorted().collect(Collectors.toList())) {
             switch(types.get(key)) {
                 case "FLOAT":
@@ -178,57 +192,56 @@ class IRGenerator extends LittleBaseListener {
         }
         for(CodeObject x : irList) {
             switch(x.opcode) {
-
                 case "STOREF":
-                    lines.add("move "+nextTemp(x.s1)+" "+nextTemp(x.dest));
+                    lines.add("move "+ getTemp(x.s1)+" "+ getTemp(x.dest));
                     break;
                 case "STOREI":
-                    lines.add("move "+nextTemp(x.s1)+" "+nextTemp(x.dest));
+                    lines.add("move "+ getTemp(x.s1)+" "+ getTemp(x.dest));
                     break;
                 case "MULTI":
-                    lines.add("move "+nextTemp(x.s1)+" "+nextTemp(x.dest));
-                    lines.add("muli "+nextTemp(x.s2)+" "+nextTemp(x.dest));
+                    lines.add("move "+ getTemp(x.s1)+" "+ getTemp(x.dest));
+                    lines.add("muli "+ getTemp(x.s2)+" "+ getTemp(x.dest));
                     break;
                 case "MULTF":
-                    lines.add("move "+nextTemp(x.s1)+" "+ nextTemp(x.dest));
-                    lines.add("mulf "+nextTemp(x.s2)+" "+ nextTemp(x.dest));
+                    lines.add("move "+ getTemp(x.s1)+" "+ getTemp(x.dest));
+                    lines.add("mulf "+ getTemp(x.s2)+" "+ getTemp(x.dest));
                     break;
                 case "DIVI":
-                    lines.add("move "+nextTemp(x.s1)+" "+nextTemp(x.dest));
-                    lines.add("divi "+nextTemp(x.s2)+" "+nextTemp(x.dest));
+                    lines.add("move "+ getTemp(x.s1)+" "+ getTemp(x.dest));
+                    lines.add("divi "+ getTemp(x.s2)+" "+ getTemp(x.dest));
                     break;
                 case "DIVF":
-                    //move z r5
-                    //divr r4 r5
-                    lines.add("move "+nextTemp(x.s1)+" "+nextTemp(x.dest));
-                    lines.add("divr "+nextTemp(x.s2)+" "+nextTemp(x.dest));
+                    lines.add("move "+ getTemp(x.s1)+" "+ getTemp(x.dest));
+                    lines.add("divr "+ getTemp(x.s2)+" "+ getTemp(x.dest));
                     break;
                 case "READF":
-                    lines.add("sys readf "+nextTemp(x.dest));
+                    lines.add("sys readf "+ getTemp(x.dest));
                     break;
                 case "READI":
-                    lines.add("sys readi "+nextTemp(x.dest));
+                    lines.add("sys readi "+ getTemp(x.dest));
                     break;
                 case "ADDI":
-                    lines.add("move "+nextTemp(x.s1)+" "+nextTemp(x.dest));
-                    lines.add("addi "+nextTemp(x.s2)+" "+nextTemp(x.dest));
+                    lines.add("move "+ getTemp(x.s1)+" "+ getTemp(x.dest));
+                    lines.add("addi "+ getTemp(x.s2)+" "+ getTemp(x.dest));
                     break;
                 case "ADDF":
-                    lines.add("move "+nextTemp(x.s1)+" "+nextTemp(x.dest));
-                    lines.add("addf "+nextTemp(x.s2)+" "+nextTemp(x.dest));
+                    lines.add("move "+ getTemp(x.s1)+" "+ getTemp(x.dest));
+                    lines.add("addr "+ getTemp(x.s2)+" "+ getTemp(x.dest));
                     break;
                 case "SUBI":
-                    lines.add("move "+nextTemp(x.s1)+" "+nextTemp(x.dest));
-                    lines.add("subi "+nextTemp(x.s2)+" "+nextTemp(x.dest));
+                    lines.add("move "+ getTemp(x.s1)+" "+ getTemp(x.dest));
+                    lines.add("subi "+ getTemp(x.s2)+" "+ getTemp(x.dest));
                     break;
                 case "SUBF":
-                    lines.add("move "+nextTemp(x.s1)+" "+nextTemp(x.dest));
-                    lines.add("subf "+nextTemp(x.s2)+" "+nextTemp(x.dest));
+                    lines.add("move "+ getTemp(x.s1)+" "+ getTemp(x.dest));
+                    lines.add("subf "+ getTemp(x.s2)+" "+ getTemp(x.dest));
                     break;
                 case "WRITEF":
+                    lines.add("sys writer "+getTemp(x.dest));
+                    break;
                 case "WRITES":
                 case "WRITEI":
-                    lines.add("sys "+x.opcode.toLowerCase()+" "+nextTemp(x.dest));
+                    lines.add("sys "+x.opcode.toLowerCase()+" "+ getTemp(x.dest));
                     break;
                 case "":
 
@@ -242,33 +255,68 @@ class IRGenerator extends LittleBaseListener {
 
     @Override
     public void exitAssign_stmt(LittleParser.Assign_stmtContext ctx) {
+
+        //Expression
         String compound = ctx.assign_expr().expr().getText();
+
         if(compound.contains("/")){
+
             String assignExpr = "/";
-            String[] arr = ctx.assign_expr().expr().getText().split("/");
+            String assignee = ctx.assign_expr().id().getText();
+            String[] arr = processCompound(ctx.assign_expr().expr().getText(),assignExpr);
+            String postfix = findPostfix(arr);
+            String temp1 = createTemp();
 
-            String postfix;
-            if(types.getOrDefault(arr[0],null).equals("FLOAT") || types.getOrDefault(arr[1],null).equals("FLOAT")) {
-                postfix = "F";
+            if (Objects.equals(postfix, "F")) {
+
+                String temp2 = createTemp();
+
+                //FLOAT DIVISION, DIFF INSTRUCTIONS
+                irList.add(new CodeObject("STORE"+postfix,arr[1],"",temp1));
+                irList.add(new CodeObject("DIV"+postfix,arr[0],temp1,temp2));
+                irList.add(new CodeObject("STORE"+postfix,temp2,"",assignee));
+
             }
-            else postfix = "I";
+            else {
+                //SIMPLE INTEGER DIVISION
+                irList.add(new CodeObject("DIV"+postfix,arr[0],arr[1],temp1));
+                irList.add(new CodeObject("STORE"+postfix,temp1,"",assignee));
+            }
 
-            irList.add(new CodeObject("STORE"+ postfix, arr[1], "", "$T" + latestTemp++));
-            irList.add(new CodeObject("STORE" + postfix, arr[0], irList.getLast().dest, "$T"+latestTemp++));
         }
         else if(compound.contains("+")){
-            String assignExpr = "+";
-            String[] arr = ctx.assign_expr().expr().getText().split("\\+");
+
+            String assignExpr = "\\+";
+            String[] arr = processCompound(ctx.assign_expr().expr().getText(),assignExpr);
+            String assignee = ctx.assign_expr().id().getText();
+            String postfix = findPostfix(arr);
+            String temp = createTemp();
+
+            irList.add(new CodeObject("ADD"+postfix,arr[0],arr[1],temp));
+            irList.add(new CodeObject("STORE"+postfix,temp,"",assignee));
 
         }
         else if(compound.contains("-")){
             String assignExpr = "-";
-            String[] arr = ctx.assign_expr().expr().getText().split("-");
+            String[] arr = processCompound(ctx.assign_expr().expr().getText(),assignExpr);
+            String assignee = ctx.assign_expr().id().getText();
+            String postfix = findPostfix(arr);
+            String temp = createTemp();
+
+            irList.add(new CodeObject("SUB"+postfix,arr[0],arr[1],temp));
+            irList.add(new CodeObject("STORE"+postfix,temp,"",assignee));
 
         }
         else if(compound.contains("*")){
-            String assignExpr = "*";
-            String[] arr = ctx.assign_expr().expr().getText().split("\\*");
+
+            String assignExpr = "\\*";
+            String[] arr = processCompound(ctx.assign_expr().expr().getText(),assignExpr);
+            String assignee = ctx.assign_expr().id().getText();
+            String postfix = findPostfix(arr);
+            String temp = createTemp();
+
+            irList.add(new CodeObject("MULT"+postfix,arr[0],arr[1],temp));
+            irList.add(new CodeObject("STORE"+postfix,temp,"",assignee));
         }
         else {
             if(ctx.assign_expr().expr().getText().matches("[0-9]*") || ctx.assign_expr().expr().getText().matches("[0-9]*.[0-9]+")) {
@@ -321,78 +369,6 @@ class IRGenerator extends LittleBaseListener {
     @Override
     public void exitPgm_body(LittleParser.Pgm_bodyContext ctx) {
         irList.add(new CodeObject("RET", null, null, null));
-    }
-    @Override
-    public void enterAddop(LittleParser.AddopContext ctx) {
-
-        String postfix;
-        String parts = ctx.getParent().getParent().getText();
-        if(ctx.getText().equals("+")) {
-            String[] partsList = parts.split("\\+");
-            String s1 = partsList[0];
-            String s2 = partsList[1];
-
-            if(types.get(s1).equals("FLOAT") || types.get(s2).equals("FLOAT")) {
-                postfix = "F";
-            }
-            else postfix = "I";
-            irList.add(new CodeObject("ADD" + postfix, s1, s2, "$T" + latestTemp++));
-        }
-        else {
-            String[] partsList = parts.split("-");
-            String s1 = partsList[0];
-            String s2 = partsList[1];
-
-            if(types.get(s1).equals("FLOAT") || types.get(s2).equals("FLOAT")) {
-                postfix = "F";
-            }
-            else postfix = "I";
-            irList.add(new CodeObject("SUB" + postfix, s1, s2, "$T" + latestTemp++));
-        }
-    }
-    @Override
-    public void enterMulop(LittleParser.MulopContext ctx) {
-
-        String parts = ctx.getParent().getParent().getParent().getText();
-        String postfix;
-
-        if(ctx.getText().equals("*")) {
-            String[] partsList = parts.split("\\*");
-            String s1 = partsList[0];
-            String s2 = partsList[1];
-
-            if(types.get(s1).equals("FLOAT") || types.get(s2).equals("FLOAT")) {
-                postfix = "F";
-            }
-            else postfix = "I";
-
-            //check ctx for :=
-            if(ctx.getParent().getParent().getParent().getParent().getText().contains(":=")) {
-                return;
-            }
-            irList.add(new CodeObject("MULT" + postfix, s1, s2, "$T" + latestTemp++));
-        }
-        else {
-            //Divide
-            String[] partsList = parts.split("/");
-            String s1 = partsList[0];
-            String s2 = partsList[1];
-
-            if(types.get(s1).equals("FLOAT") || types.get(s2).equals("FLOAT")) {
-                postfix = "F";
-            }
-            else postfix = "I";
-
-
-            //check ctx for :=
-            if(ctx.getParent().getParent().getParent().getParent().getText().contains(":=")) {
-                return;
-            }
-
-            //Problem here.
-            irList.add(new CodeObject("DIV" + postfix, s1, s2, "$T" + latestTemp++));
-        }
-
     }
 }
 
