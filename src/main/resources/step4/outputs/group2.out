@@ -1,0 +1,15 @@
+var i
+var cm
+var t1
+str newline "\n"
+
+label main
+sys readr i
+; muli i 2.54 t1
+move i r0
+mulr 2.54 r0 ; this is converting a given inch variable into centimeters, using real numbers
+move r0 t1
+sys writer t1
+sys writes newline
+sys halt
+end

@@ -190,13 +190,21 @@ class IRGenerator extends LittleBaseListener {
                 }
             }
         }
-        for(CodeObject x : irList) {
+        ListIterator<CodeObject> itr = irList.listIterator();
+        while(itr.hasNext()) {
+            CodeObject x = itr.next();
+            CodeObject nextElement;
             switch(x.opcode) {
                 case "STOREF":
-                    lines.add("move "+ getTemp(x.s1)+" "+ getTemp(x.dest));
-                    break;
                 case "STOREI":
-                    lines.add("move "+ getTemp(x.s1)+" "+ getTemp(x.dest));
+                    nextElement = irList.listIterator(itr.nextIndex()).next();
+                    if(nextElement.opcode.equals(x.opcode) && nextElement.s1.equals(x.dest)) {
+                        lines.add("move "+getTemp(x.s1)+" "+nextElement.dest);
+                        itr.next();
+                        itr.remove();
+                        break;
+                    }
+                    else lines.add("move "+ getTemp(x.s1)+" "+ getTemp(x.dest));
                     break;
                 case "MULTI":
                     lines.add("move "+ getTemp(x.s1)+" "+ getTemp(x.dest));
@@ -204,7 +212,7 @@ class IRGenerator extends LittleBaseListener {
                     break;
                 case "MULTF":
                     lines.add("move "+ getTemp(x.s1)+" "+ getTemp(x.dest));
-                    lines.add("mulf "+ getTemp(x.s2)+" "+ getTemp(x.dest));
+                    lines.add("mulr "+ getTemp(x.s2)+" "+ getTemp(x.dest));
                     break;
                 case "DIVI":
                     lines.add("move "+ getTemp(x.s1)+" "+ getTemp(x.dest));
@@ -215,7 +223,7 @@ class IRGenerator extends LittleBaseListener {
                     lines.add("divr "+ getTemp(x.s2)+" "+ getTemp(x.dest));
                     break;
                 case "READF":
-                    lines.add("sys readf "+ getTemp(x.dest));
+                    lines.add("sys readr "+ getTemp(x.dest));
                     break;
                 case "READI":
                     lines.add("sys readi "+ getTemp(x.dest));
@@ -234,7 +242,7 @@ class IRGenerator extends LittleBaseListener {
                     break;
                 case "SUBF":
                     lines.add("move "+ getTemp(x.s1)+" "+ getTemp(x.dest));
-                    lines.add("subf "+ getTemp(x.s2)+" "+ getTemp(x.dest));
+                    lines.add("subr "+ getTemp(x.s2)+" "+ getTemp(x.dest));
                     break;
                 case "WRITEF":
                     lines.add("sys writer "+getTemp(x.dest));
@@ -249,7 +257,6 @@ class IRGenerator extends LittleBaseListener {
 
             }
         }
-        lines.add("sys halt");
         return lines;
     }
 
@@ -344,11 +351,18 @@ class IRGenerator extends LittleBaseListener {
     }
     @Override
     public void enterRead_stmt(LittleParser.Read_stmtContext ctx) {
-        Arrays.stream(ctx.id_list().getText().split(",")).forEach(readi -> {
-            if(types.get(readi).equalsIgnoreCase("string")) {
-                irList.add(new CodeObject("READS", null, null, readi));
-            } else {
-                irList.add(new CodeObject("READI", null, null, readi));
+        Arrays.stream(ctx.id_list().getText().split(",")).forEach(read -> {
+            switch(types.get(read)) {
+                case "FLOAT": {
+                    irList.add(new CodeObject("READF", null, null, read));
+                    break;
+                }
+                case "INT": {
+                    irList.add(new CodeObject("READI", null, null, read));
+                }
+                case "STRING": {
+                    irList.add(new CodeObject("READS", null, null, read));
+                }
             }
         });
     }

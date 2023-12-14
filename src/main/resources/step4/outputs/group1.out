@@ -1,0 +1,45 @@
+var a
+var b
+var c
+var d
+var e
+var f
+str alert "Enter two integers"
+str sumAlert "The sum of these two integers is"
+str diffAlert "The difference of these two integers is"
+str productAlert "The product of these two integers is"
+str quotientAlert "The quotient of these two integers is"
+str space " "
+str newLine "\n"
+sys writes alert
+sys writes space
+sys readi a
+sys readi b
+move a r0
+addi b r0
+move r0 c
+move a r1
+subi b r1
+move r1 d
+move a r2
+muli b r2
+move r2 e
+move a r3
+divi b r3
+move r3 f
+sys writes sumAlert
+sys writes space
+sys writei c
+sys writes newLine
+sys writes diffAlert
+sys writes space
+sys writei d
+sys writes newLine
+sys writes productAlert
+sys writes space
+sys writei e
+sys writes newLine
+sys writes quotientAlert
+sys writes space
+sys writei f
+sys writes newLine

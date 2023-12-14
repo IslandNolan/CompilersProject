@@ -1,0 +1,12 @@
+PROGRAM test
+BEGIN
+    FLOAT i , cm, t1;
+    STRING newline := "\n";
+
+    FUNCTION VOID main()
+            BEGIN
+                    READ(i);
+                    t1:= i * 2.54;
+                    WRITE(t1, newline);
+            END
+    END
